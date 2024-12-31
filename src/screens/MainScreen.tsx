@@ -5,38 +5,115 @@ import {
   ActivityIndicator,
   Share,
   TouchableOpacity,
+  RefreshControl,
+  ScrollView,
+  Text,
+  NetInfo,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import Icon from 'react-native-vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MainScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
+  const [cachedHtml, setCachedHtml] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const webViewRef = useRef(null);
+  
+  const WEB_URL = 'https://scarlet-flss-2.tiiny.site/';
+
+  // Cache management
+  const cacheWebContent = async (html) => {
+    try {
+      await AsyncStorage.setItem('cached_content', html);
+    } catch (error) {
+      console.error('Caching failed:', error);
+    }
+  };
+
+  const loadCachedContent = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('cached_content');
+      if (cached) {
+        setCachedHtml(cached);
+      }
+    } catch (error) {
+      console.error('Loading cache failed:', error);
+    }
+  };
+
+  // Network status monitoring
+  React.useEffect(() => {
+    const checkConnectivity = async () => {
+      try {
+        const state = await NetInfo.fetch();
+        setIsOffline(!state.isConnected);
+        if (!state.isConnected) {
+          loadCachedContent();
+        }
+      } catch (error) {
+        console.error('Network check failed:', error);
+      }
+    };
+
+    checkConnectivity();
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleShare = async () => {
     try {
       await Share.share({
         message: 'Check out these Christian Praises!',
-        url: 'YOUR_WEBSITE_URL',
+        url: WEB_URL,
       });
     } catch (error) {
       console.error(error);
     }
   };
 
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    if (webViewRef.current) {
+      webViewRef.current.reload();
+    }
+    setRefreshing(false);
+  }, []);
+
   const injectedJavaScript = `
-    // Add any custom JavaScript you want to inject into the WebView
+    // Cache the content when loaded
+    window.ReactNativeWebView.postMessage(document.documentElement.outerHTML);
     true;
   `;
+
+  const handleMessage = (event) => {
+    cacheWebContent(event.nativeEvent.data);
+  };
+
+  if (isOffline && !cachedHtml) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>No internet connection</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <WebView
         ref={webViewRef}
-        source={{ uri: 'YOUR_WEBSITE_URL' }}
+        source={isOffline ? { html: cachedHtml } : { uri: WEB_URL }}
         style={styles.webview}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
+        onMessage={handleMessage}
         injectedJavaScript={injectedJavaScript}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -44,6 +121,9 @@ const MainScreen = () => {
         scalesPageToFit={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
+        pullToRefreshEnabled={true}
+        onRefresh={onRefresh}
+        refreshing={refreshing}
       />
       {isLoading && (
         <View style={styles.loadingContainer}>
@@ -89,6 +169,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 18,
+    marginBottom: 20,
+    color: '#333',
+  },
+  retryButton: {
+    backgroundColor: '#007AFF',
+    padding: 12,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#fff',
+    fontSize: 16,
   },
 });
 
