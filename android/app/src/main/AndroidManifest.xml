@@ -1,0 +1,10 @@
+<manifest ...>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Add any other required permissions -->
+    
+    <application
+        android:usesCleartextTraffic="true"
+        ...>
+        <!-- Your existing application configuration -->
+    </application>
+</manifest> 
